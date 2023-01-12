@@ -56,6 +56,8 @@ if __name__ == '__main__':
         y0, x0 = map(int, np.mean(np.where(binary > 0), axis=1))
         cv2.circle(image, (x, y), 3, (0, 255, 0), 2)
         cv2.circle(image, (x0, y0), 3, (0, 0, 255), 2)
+        if not os.path.exists('result'):
+            os.makedirs('result')
         cv2.imwrite(f'result/{image_name}', image)
 
         error = sqrt((x - x0) ** 2 + (y - y0) ** 2)
