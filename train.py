@@ -15,7 +15,7 @@ parser.add_argument('-e', '--epochs', help='number of epochs', type=int, default
 args = parser.parse_args()
 
 if __name__ == '__main__':
-    data_loader = DataLoader(KeyholeDataset(args.data_dir), batch_size=4, shuffle=True)
+    data_loader = DataLoader(KeyholeDataset(args.data_dir), batch_size=args.batch_size, shuffle=True)
     fc_dense_net = None
     if args.model == 'FCDenseNet56':
         fc_dense_net = FCDenseNet56().cuda()
@@ -23,7 +23,9 @@ if __name__ == '__main__':
         fc_dense_net = FCDenseNet67().cuda()
     else:
         fc_dense_net = FCDenseNet103().cuda()
-
+    
+    if not os.path.exists(args.weight_dir):
+        os.makedirs(args.weight_dir)
     weight_path = os.path.join(args.weight_dir, f'{args.model}.pth')
     if os.path.exists(weight_path):
         fc_dense_net.load_state_dict(torch.load(weight_path))
