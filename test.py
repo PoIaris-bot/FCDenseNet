@@ -14,7 +14,6 @@ parser.add_argument('--weight_dir', help='directory of FCDenseNet parameters', d
 args = parser.parse_args()
 
 if __name__ == '__main__':
-    fc_dense_net = None
     if args.model == 'FCDenseNet56':
         fc_dense_net = FCDenseNet56()
     elif args.model == 'FCDenseNet67':

@@ -33,7 +33,7 @@ if __name__ == '__main__':
         if not os.path.exists(args.weight_dir):
             os.makedirs(args.weight_dir)
         print('Failed to load weights')
-    fc_dense_net = fc_dense_net..cuda()
+    fc_dense_net = fc_dense_net.cuda()
     
     opt = optim.Adam(fc_dense_net.parameters())
     loss_func = nn.BCELoss()
