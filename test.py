@@ -16,18 +16,21 @@ args = parser.parse_args()
 if __name__ == '__main__':
     fc_dense_net = None
     if args.model == 'FCDenseNet56':
-        fc_dense_net = FCDenseNet56().eval().cuda()
+        fc_dense_net = FCDenseNet56()
     elif args.model == 'FCDenseNet67':
-        fc_dense_net = FCDenseNet67().eval().cuda()
+        fc_dense_net = FCDenseNet67()
+    elif args.model == 'FCDenseNet103':
+        fc_dense_net = FCDenseNet103()
     else:
-        fc_dense_net = FCDenseNet103().eval().cuda()
+        raise SystemExit('Wrong type of network model')
 
     weight_path = os.path.join(args.weight_dir, f'{args.model}.pth')
     if os.path.exists(weight_path):
         fc_dense_net.load_state_dict(torch.load(weight_path))
         print('Successfully loaded weights')
     else:
-        print('Failed to load weights')
+        raise SystemExit('Failed to load weights')
+    fc_dense_net = fc_dense_net.eval().cuda()
 
     image_dir = os.path.join(args.data_dir, 'JPEGImages')
     segment_dir = os.path.join(args.data_dir, 'SegmentationClass')
@@ -39,6 +42,9 @@ if __name__ == '__main__':
     avg_error = 0
     max_error = 0
     max_error_image_name = ''
+    error_leq1_count = 0
+    error_leq3_count = 0
+    error_leq5_count = 0
     for image_name in image_names:
         image_path = os.path.join(image_dir, image_name)
         segment_image_path = os.path.join(segment_dir, image_name)
@@ -54,7 +60,7 @@ if __name__ == '__main__':
 
         output_contours, _ = cv2.findContours(output_binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         contours, _ = cv2.findContours(binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        
+
         output_area = []
         for i in range(len(output_contours)):
             output_area.append(cv2.contourArea(output_contours[i]))
@@ -62,7 +68,7 @@ if __name__ == '__main__':
         for i in range(len(output_contours)):
             if i != output_max_idx:
                 cv2.fillPoly(output_binary, [output_contours[i]], 0)
-        
+
         cv2.drawContours(image, output_contours, output_max_idx, (0, 255, 0), 3)
         cv2.drawContours(image, contours, -1, (0, 0, 255), 3)
 
@@ -73,8 +79,16 @@ if __name__ == '__main__':
         cv2.imwrite(f'result/{image_name}', image)
 
         error = sqrt((x - x0) ** 2 + (y - y0) ** 2)
+
+        error_leq1_count += 1 if error <= 1 else 0
+        error_leq3_count += 1 if error <= 3 else 0
+        error_leq5_count += 1 if error <= 5 else 0
+
         avg_error += error
         max_error_image_name = image_name if error > max_error else max_error_image_name
         max_error = error if error > max_error else max_error
     print(f'average error: {avg_error / len(image_names)} maximum error: {max_error}')
+    print(f'percentage of images with error less equal than 1 pixel: {error_leq1_count / len(image_names)}')
+    print(f'percentage of images with error less equal than 3 pixels: {error_leq3_count / len(image_names)}')
+    print(f'percentage of images with error less equal than 5 pixels: {error_leq5_count / len(image_names)}')
     print(f'image with the maximum error: {max_error_image_name}')

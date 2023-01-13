@@ -16,13 +16,14 @@ args = parser.parse_args()
 
 if __name__ == '__main__':
     data_loader = DataLoader(KeyholeDataset(args.data_dir), batch_size=args.batch_size, num_workers=4, shuffle=True)
-    fc_dense_net = None
     if args.model == 'FCDenseNet56':
-        fc_dense_net = FCDenseNet56().cuda()
+        fc_dense_net = FCDenseNet56()
     elif args.model == 'FCDenseNet67':
-        fc_dense_net = FCDenseNet67().cuda()
+        fc_dense_net = FCDenseNet67()
+    elif args.model == 'FCDenseNet103':
+        fc_dense_net = FCDenseNet103()
     else:
-        fc_dense_net = FCDenseNet103().cuda()
+        raise SystemExit('Wrong type of network model')
 
     weight_path = os.path.join(args.weight_dir, f'{args.model}.pth')
     if os.path.exists(weight_path):
@@ -32,7 +33,8 @@ if __name__ == '__main__':
         if not os.path.exists(args.weight_dir):
             os.makedirs(args.weight_dir)
         print('Failed to load weights')
-
+    fc_dense_net = fc_dense_net..cuda()
+    
     opt = optim.Adam(fc_dense_net.parameters())
     loss_func = nn.BCELoss()
 
