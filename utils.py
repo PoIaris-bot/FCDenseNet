@@ -19,8 +19,3 @@ def resize(image, size=256):
         image_new[:height, :width] = image
     image_new = cv2.resize(image_new, (size, size))
     return image_new
-
-
-def threshold(image):
-    _, binary = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    return binary

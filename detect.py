@@ -5,7 +5,7 @@ import torch
 import argparse
 import numpy as np
 from model import FCDenseNet56, FCDenseNet67, FCDenseNet103
-from utils import resize, threshold, transform
+from utils import resize, transform
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-m', '--model', help='model name', default='FCDenseNet56')
@@ -39,12 +39,19 @@ if __name__ == '__main__':
     print('Inference took %.4fs complete' % (end - start))
 
     output_image = output_image.cpu().detach().numpy().reshape(output_image.shape[-2:]) * 255
-    binary = threshold(output_image.astype('uint8'))
+    _, binary = cv2.threshold(output_image.astype('uint8'), 0, 255, cv2.THRESH_BINARY)
     contours, _ = cv2.findContours(binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    cv2.drawContours(image, contours, -1, (0, 255, 0), 3)
+    area = []
+    for i in range(len(contours)):
+        area.append(cv2.contourArea(contours[i]))
+    max_idx = np.argmax(area)
+    for i in range(len(contours)):
+        if i != max_idx:
+            cv2.fillPoly(binary, [contours[i]], 0)
+    cv2.drawContours(image, contours, max_idx, (0, 255, 0), 3)
 
     y, x = map(int, np.mean(np.where(binary > 0), axis=1))
-    cv2.circle(image, (x, y), 3, (0, 0, 255), 2)
+    cv2.circle(image, (x, y), 3, (0, 255, 0), 2)
 
     cv2.imshow('result', image)
     cv2.waitKey(0)

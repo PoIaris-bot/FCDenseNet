@@ -15,7 +15,7 @@ parser.add_argument('-e', '--epochs', help='number of epochs', type=int, default
 args = parser.parse_args()
 
 if __name__ == '__main__':
-    data_loader = DataLoader(KeyholeDataset(args.data_dir), batch_size=args.batch_size, shuffle=True)
+    data_loader = DataLoader(KeyholeDataset(args.data_dir), batch_size=args.batch_size, num_workers=4, shuffle=True)
     fc_dense_net = None
     if args.model == 'FCDenseNet56':
         fc_dense_net = FCDenseNet56().cuda()

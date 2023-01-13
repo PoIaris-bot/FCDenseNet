@@ -5,7 +5,7 @@ import argparse
 import numpy as np
 from math import sqrt
 from model import FCDenseNet56, FCDenseNet67, FCDenseNet103
-from utils import resize, threshold, transform
+from utils import resize, transform
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-m', '--model', help='model name', default='FCDenseNet56')
@@ -33,8 +33,12 @@ if __name__ == '__main__':
     segment_dir = os.path.join(args.data_dir, 'SegmentationClass')
     image_names = os.listdir(image_dir)
 
+    if not os.path.exists('result'):
+        os.makedirs('result')
+
     avg_error = 0
     max_error = 0
+    max_error_image_name = ''
     for image_name in image_names:
         image_path = os.path.join(image_dir, image_name)
         segment_image_path = os.path.join(segment_dir, image_name)
@@ -43,24 +47,34 @@ if __name__ == '__main__':
 
         input_image = torch.unsqueeze(transform(image), dim=0).cuda()
         output_image = fc_dense_net(input_image)
-
         output_image = output_image.cpu().detach().numpy().reshape(output_image.shape[-2:]) * 255
-        output_binary = threshold(output_image.astype('uint8'))
-        binary = threshold(segment_image)
+
+        _, output_binary = cv2.threshold(output_image.astype('uint8'), 5, 255, cv2.THRESH_BINARY)
+        _, binary = cv2.threshold(segment_image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
         output_contours, _ = cv2.findContours(output_binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         contours, _ = cv2.findContours(binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        cv2.drawContours(image, output_contours, -1, (0, 255, 0), 3)
+        
+        output_area = []
+        for i in range(len(output_contours)):
+            output_area.append(cv2.contourArea(output_contours[i]))
+        output_max_idx = np.argmax(output_area)
+        for i in range(len(output_contours)):
+            if i != output_max_idx:
+                cv2.fillPoly(output_binary, [output_contours[i]], 0)
+        
+        cv2.drawContours(image, output_contours, output_max_idx, (0, 255, 0), 3)
         cv2.drawContours(image, contours, -1, (0, 0, 255), 3)
 
         y, x = map(int, np.mean(np.where(output_binary > 0), axis=1))
         y0, x0 = map(int, np.mean(np.where(binary > 0), axis=1))
         cv2.circle(image, (x, y), 3, (0, 255, 0), 2)
         cv2.circle(image, (x0, y0), 3, (0, 0, 255), 2)
-        if not os.path.exists('result'):
-            os.makedirs('result')
         cv2.imwrite(f'result/{image_name}', image)
 
         error = sqrt((x - x0) ** 2 + (y - y0) ** 2)
         avg_error += error
+        max_error_image_name = image_name if error > max_error else max_error_image_name
         max_error = error if error > max_error else max_error
     print(f'average error: {avg_error / len(image_names)} maximum error: {max_error}')
+    print(f'image with the maximum error: {max_error_image_name}')
