@@ -1,34 +1,35 @@
 import os
 import torch
 import argparse
-from model import FCDenseNet56, FCDenseNet67, FCDenseNet103
+from pathlib import Path
+from model import FCDenseNets
 
-parser = argparse.ArgumentParser()
-parser.add_argument('-m', '--model', help='model name', default='FCDenseNet56')
-parser.add_argument('--model_dir', help='directory of onnx model', default='model')
-parser.add_argument('--weight_dir', help='directory of FCDenseNet parameters', default='param')
-args = parser.parse_args()
 
-if __name__ == '__main__':
-    if args.model == 'FCDenseNet56':
-        fc_dense_net = FCDenseNet56()
-    elif args.model == 'FCDenseNet67':
-        fc_dense_net = FCDenseNet67()
-    elif args.model == 'FCDenseNet103':
-        fc_dense_net = FCDenseNet103()
+@torch.no_grad()
+def run(weights):
+    model_name = Path(weights).stem
+    if model_name in FCDenseNets.keys():
+        model = FCDenseNets[model_name].eval().cuda()
     else:
-        raise SystemExit('Wrong type of network model')
+        raise SystemExit('Unsupported type of model')
 
-    weight_path = os.path.join(args.weight_dir, f'{args.model}.pth')
-    if os.path.exists(weight_path):
-        fc_dense_net.load_state_dict(torch.load(weight_path))
+    if os.path.exists(weights):
+        model.load_state_dict(torch.load(weights))
         print('Successfully loaded weights')
     else:
-        print('Failed to load weights')
+        raise SystemExit('Failed to load weights')
 
-    fc_dense_net = fc_dense_net.eval().cuda()
     dummy_input = torch.randn(1, 3, 256, 256).cuda()
+    torch.onnx.export(model, dummy_input, os.path.join(os.path.split(weights)[0], f'{model_name}.onnx'), verbose=True)
 
-    if not os.path.exists(args.model_dir):
-        os.makedirs(args.model_dir)
-    torch.onnx.export(fc_dense_net, dummy_input, os.path.join(args.model_dir, f'{args.model}.onnx'), verbose=True)
+
+def parse_opt():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-w', '--weights', type=str, help='model path', default='weights/FCDenseNet56.pth')
+    opt = parser.parse_args()
+    return opt
+
+
+if __name__ == '__main__':
+    opt = parse_opt()
+    run(**vars(opt))

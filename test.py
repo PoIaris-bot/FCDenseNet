@@ -1,49 +1,46 @@
 import os
 import cv2
+import time
 import torch
 import argparse
 import numpy as np
 from math import sqrt
-from model import FCDenseNet56, FCDenseNet67, FCDenseNet103
+from pathlib import Path
+from model import FCDenseNets
 from utils import resize, transform
 
-parser = argparse.ArgumentParser()
-parser.add_argument('-m', '--model', help='model name', default='FCDenseNet56')
-parser.add_argument('--data_dir', help='directory of keyhole dataset', default='data/test')
-parser.add_argument('--weight_dir', help='directory of FCDenseNet parameters', default='param')
-args = parser.parse_args()
 
-if __name__ == '__main__':
-    if args.model == 'FCDenseNet56':
-        fc_dense_net = FCDenseNet56()
-    elif args.model == 'FCDenseNet67':
-        fc_dense_net = FCDenseNet67()
-    elif args.model == 'FCDenseNet103':
-        fc_dense_net = FCDenseNet103()
+@torch.no_grad()
+def run(weights, source):
+    model_name = Path(weights).stem
+    if model_name in FCDenseNets.keys():
+        model = FCDenseNets[model_name].eval().cuda()
     else:
-        raise SystemExit('Wrong type of network model')
+        raise SystemExit('Unsupported type of model')
 
-    weight_path = os.path.join(args.weight_dir, f'{args.model}.pth')
-    if os.path.exists(weight_path):
-        fc_dense_net.load_state_dict(torch.load(weight_path))
+    if os.path.exists(weights):
+        model.load_state_dict(torch.load(weights))
         print('Successfully loaded weights')
     else:
         raise SystemExit('Failed to load weights')
-    fc_dense_net = fc_dense_net.eval().cuda()
 
-    image_dir = os.path.join(args.data_dir, 'JPEGImages')
-    segment_dir = os.path.join(args.data_dir, 'SegmentationClass')
+    image_dir = os.path.join(source, 'JPEGImages')
+    segment_dir = os.path.join(source, 'SegmentationClass')
     image_names = os.listdir(image_dir)
 
-    if not os.path.exists('result'):
-        os.makedirs('result')
+    save_dir = 'run/test'
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
 
     avg_error = 0
     max_error = 0
     max_error_image_name = ''
-    error_leq1_count = 0
-    error_leq3_count = 0
-    error_leq5_count = 0
+
+    error_leq1p_count = 0
+    error_leq3p_count = 0
+    error_leq5p_count = 0
+
+    avg_infer_time = 0
     for image_name in image_names:
         image_path = os.path.join(image_dir, image_name)
         segment_image_path = os.path.join(segment_dir, image_name)
@@ -51,7 +48,10 @@ if __name__ == '__main__':
         segment_image = resize(cv2.imread(segment_image_path, 0))
 
         input_image = torch.unsqueeze(transform(image), dim=0).cuda()
-        output_image = fc_dense_net(input_image)
+        start = time.time()
+        output_image = model(input_image)
+        end = time.time()
+        avg_infer_time += end - start
         output_image = output_image.cpu().detach().numpy().reshape(output_image.shape[-2:]) * 255
 
         _, output_binary = cv2.threshold(output_image.astype('uint8'), 5, 255, cv2.THRESH_BINARY)
@@ -75,19 +75,33 @@ if __name__ == '__main__':
         y0, x0 = map(int, np.mean(np.where(binary > 0), axis=1))
         cv2.circle(image, (x, y), 3, (0, 255, 0), 2)
         cv2.circle(image, (x0, y0), 3, (0, 0, 255), 2)
-        cv2.imwrite(f'result/{image_name}', image)
+        cv2.imwrite(f'{save_dir}/{image_name}', image)
 
         error = sqrt((x - x0) ** 2 + (y - y0) ** 2)
 
-        error_leq1_count += 1 if error <= 1 else 0
-        error_leq3_count += 1 if error <= 3 else 0
-        error_leq5_count += 1 if error <= 5 else 0
+        error_leq1p_count += 1 if error <= 1 else 0
+        error_leq3p_count += 1 if error <= 3 else 0
+        error_leq5p_count += 1 if error <= 5 else 0
 
         avg_error += error
         max_error_image_name = image_name if error > max_error else max_error_image_name
         max_error = error if error > max_error else max_error
     print(f'average error: {avg_error / len(image_names)} maximum error: {max_error}')
-    print(f'percentage of images with error less equal than 1 pixel: {error_leq1_count / len(image_names)}')
-    print(f'percentage of images with error less equal than 3 pixels: {error_leq3_count / len(image_names)}')
-    print(f'percentage of images with error less equal than 5 pixels: {error_leq5_count / len(image_names)}')
-    print(f'image with the maximum error: {max_error_image_name}')
+    print(f'average inference time: {avg_infer_time / len(image_names)} s')
+    print(f'percentage of images with error less equal than 1 pixel: {error_leq1p_count / len(image_names)}')
+    print(f'percentage of images with error less equal than 3 pixels: {error_leq3p_count / len(image_names)}')
+    print(f'percentage of images with error less equal than 5 pixels: {error_leq5p_count / len(image_names)}')
+    print(f'test image with the maximum error: {max_error_image_name}')
+
+
+def parse_opt():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-w', '--weights', type=str, help='model path', default='weights/FCDenseNet56.pth')
+    parser.add_argument('-s', '--source', type=str, help='image source', default='datasets/test')
+    opt = parser.parse_args()
+    return opt
+
+
+if __name__ == '__main__':
+    opt = parse_opt()
+    run(**vars(opt))

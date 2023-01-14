@@ -4,60 +4,51 @@ import time
 import torch
 import argparse
 import numpy as np
+from pathlib import Path
 from openvino.inference_engine import IECore
-from model import FCDenseNet56, FCDenseNet67, FCDenseNet103
+from model import FCDenseNets
 from utils import resize, transform
 
-parser = argparse.ArgumentParser()
-parser.add_argument('-m', '--model', help='model name', default='FCDenseNet56')
-parser.add_argument('-f', '--format', help='format of FCDenseNet', default='torch')
-parser.add_argument('--model_dir', help='directory of onnx model', default='model')
-parser.add_argument('-i', '--image_path', help='path of keyhole image', default='data/test/JPEGImages/00001.jpg')
-parser.add_argument('--weight_dir', help='directory of FCDenseNet parameters', default='param')
-args = parser.parse_args()
 
-if __name__ == '__main__':
-    if args.format == 'torch':
-        if args.model == 'FCDenseNet56':
-            fc_dense_net = FCDenseNet56()
-        elif args.model == 'FCDenseNet67':
-            fc_dense_net = FCDenseNet67()
-        elif args.model == 'FCDenseNet103':
-            fc_dense_net = FCDenseNet103()
+@torch.no_grad()
+def run(weights, source):
+    model_format = Path(weights).suffix
+    if model_format == '.pth':
+        model_name = Path(weights).stem
+        if model_name in FCDenseNets.keys():
+            model = FCDenseNets[model_name].eval().cuda()
         else:
-            raise SystemExit('Wrong type of network model')
+            raise SystemExit('Unsupported type of model')
 
-        weight_path = os.path.join(args.weight_dir, f'{args.model}.pth')
-        if os.path.exists(weight_path):
-            fc_dense_net.load_state_dict(torch.load(weight_path))
+        if os.path.exists(weights):
+            model.load_state_dict(torch.load(weights))
             print('Successfully loaded weights')
         else:
             raise SystemExit('Failed to load weights')
-        fc_dense_net = fc_dense_net.eval().cuda()
-    elif args.format == 'onnx':
+    elif model_format == '.onnx':
         ie = IECore()
-        net = ie.read_network(model=os.path.join(args.model_dir, f'{args.model}.onnx'))
+        net = ie.read_network(model=weights)
         input_blob = next(iter(net.input_info))
         output_blob = next(iter(net.outputs))
-        fc_dense_net = ie.load_network(network=net, device_name='CPU')
+        model = ie.load_network(network=net, device_name='CPU')
     else:
-        raise SystemExit('Wrong type of network format')
+        raise SystemExit('Unsupported type of model format')
 
-    image = resize(cv2.imread(args.image_path))
-    if args.format == 'torch':
+    image = resize(cv2.imread(source))
+    if model_format == '.pth':
         input_image = torch.unsqueeze(transform(image), dim=0).cuda()
         time_stamp = time.time()
-        output_image = fc_dense_net(input_image)
+        output_image = model(input_image)
         print('Inference took %.4fs to complete' % (time.time() - time_stamp))
-        output_image = output_image.cpu().detach().numpy().reshape(output_image.shape[-2:]) * 255
+        output_image = output_image.cpu().detach().numpy()
     else:
         input_image = image.transpose(2, 0, 1) / 255
         time_stamp = time.time()
-        output = fc_dense_net.infer(inputs={input_blob: [input_image]})
+        output = model.infer(inputs={input_blob: [input_image]})
         print('Inference took %.4fs to complete' % (time.time() - time_stamp))
         output_image = output[output_blob]
-        output_image = output_image.reshape(output_image.shape[-2:]) * 255
 
+    output_image = output_image.reshape(output_image.shape[-2:]) * 255
     _, binary = cv2.threshold(output_image.astype('uint8'), 0, 255, cv2.THRESH_BINARY)
     contours, _ = cv2.findContours(binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     area = []
@@ -75,3 +66,16 @@ if __name__ == '__main__':
     cv2.imshow('result', image)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
+
+
+def parse_opt():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-w', '--weights', type=str, help='model path', default='weights/FCDenseNet56.pth')
+    parser.add_argument('-s', '--source', type=str, help='image source', default='datasets/test/JPEGImages/00001.jpg')
+    opt = parser.parse_args()
+    return opt
+
+
+if __name__ == '__main__':
+    opt = parse_opt()
+    run(**vars(opt))

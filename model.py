@@ -124,22 +124,17 @@ class FCDenseNet(nn.Module):
         return output
 
 
-def FCDenseNet56():
-    return FCDenseNet(
+FCDenseNets = {
+    'FCDenseNet56': FCDenseNet(
         in_channels=3, down_path_block_layers=(4, 4, 4, 4, 4), up_path_block_layers=(4, 4, 4, 4, 4),
         bottleneck_block_layers=4, growth_rate=12, first_conv_out_channels=48
-    )
-
-
-def FCDenseNet67():
-    return FCDenseNet(
+    ),
+    'FCDenseNet67': FCDenseNet(
         in_channels=3, down_path_block_layers=(5, 5, 5, 5, 5), up_path_block_layers=(5, 5, 5, 5, 5),
         bottleneck_block_layers=5, growth_rate=16, first_conv_out_channels=48
-    )
-
-
-def FCDenseNet103():
-    return FCDenseNet(
+    ),
+    'FCDenseNet103': FCDenseNet(
         in_channels=3, down_path_block_layers=(4, 5, 7, 10, 12), up_path_block_layers=(12, 10, 7, 5, 4),
         bottleneck_block_layers=15, growth_rate=16, first_conv_out_channels=48
     )
+}
