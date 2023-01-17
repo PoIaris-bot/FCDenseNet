@@ -1,7 +1,8 @@
 import os
 import cv2
+import numpy as np
 from torch.utils.data import Dataset
-from utils import resize, transform
+from utils import resize, transform, augment_hsv
 
 
 class KeyholeDataset(Dataset):
@@ -20,4 +21,6 @@ class KeyholeDataset(Dataset):
         _, binary = cv2.threshold(cv2.imread(segment_image_path, 0), 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         segment_image = resize(binary)
         image = resize(cv2.imread(image_path))
+        if np.random.rand() > 0.5:
+            augment_hsv(image, 0.015, 0.7, 0.4)
         return transform(image), transform(segment_image)
