@@ -7,8 +7,10 @@ from models.network import FCDenseNets
 from utils.dataset import KeyholeDataset
 
 
-def run(model_name, weights, source, batch_size, epochs):
-    data_loader = DataLoader(KeyholeDataset(source), batch_size=batch_size, num_workers=4, shuffle=True)
+def run(model_name, weights, source, augment, batch_size, num_workers, epochs):
+    data_loader = DataLoader(
+        KeyholeDataset(source, augment), batch_size=batch_size, num_workers=num_workers, shuffle=True
+    )
     if model_name in FCDenseNets.keys():
         model = FCDenseNets[model_name].cuda()
     else:
@@ -30,8 +32,8 @@ def run(model_name, weights, source, batch_size, epochs):
     optimizer = optim.Adam(model.parameters())
     loss_func = nn.BCELoss()
 
-    epoch = 1
-    while epoch <= epochs:
+    epoch = 0
+    while epoch < epochs:
         loss = 0
         avg_loss = 0
         for batch, (image, segment_image) in enumerate(data_loader):
@@ -48,15 +50,16 @@ def run(model_name, weights, source, batch_size, epochs):
             avg_loss += loss
             if batch % 100 == 0:
                 print('\repoch: {:>5d}/{:<5d} batch: {:>5d}/{:<5d} loss: {:^12.8f} average loss: {:^12.8f}'.format(
-                    epoch, epochs, batch, len(data_loader) - 1, loss, avg_loss / (batch + 1)
+                    epoch, epochs - 1, batch, len(data_loader) - 1, loss, avg_loss / (batch + 1)
                 ), end='')
                 torch.save(model.state_dict(), f'{save_dir}/{model_name}.pth')
 
         torch.save(model.state_dict(), f'{save_dir}/{model_name}.pth')
         print('\repoch: {:>5d}/{:<5d} batch: {:>5d}/{:<5d} loss: {:^12.8f} average loss: {:^12.8f}'.format(
-            epoch, epochs, len(data_loader) - 1, len(data_loader) - 1, loss, avg_loss / len(data_loader)
+            epoch, epochs - 1, len(data_loader) - 1, len(data_loader) - 1, loss, avg_loss / len(data_loader)
         ), end='\n')
         epoch += 1
+    print(f'\nResults saved to {save_dir}')
 
 
 def parse_opt():
@@ -65,6 +68,8 @@ def parse_opt():
     parser.add_argument('-s', '--source', type=str, help='image source', default='datasets/train')
     parser.add_argument('-w', '--weights', help='weight path', default='')
     parser.add_argument('-b', '--batch-size', type=int, help='batch size', default=4)
+    parser.add_argument('-n', '--num-workers', type=int, help='number of workers', default=4)
+    parser.add_argument('-a', '--augment', type=bool, help='image augmentation', default=False)
     parser.add_argument('-e', '--epochs', type=int, help='number of epochs', default=50)
     opt = parser.parse_args()
     return opt

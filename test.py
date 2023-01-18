@@ -14,13 +14,14 @@ from utils.transform import resize, transform
 def run(weights, source):
     model_name = Path(weights).stem
     if model_name in FCDenseNets.keys():
+        print(f'Loading {model_name}...')
         model = FCDenseNets[model_name].eval().cuda()
     else:
         raise SystemExit('Unsupported type of model')
 
     if os.path.exists(weights):
         model.load_state_dict(torch.load(weights))
-        print('Successfully loaded weights')
+        print('Successfully loaded weights\n')
     else:
         raise SystemExit('Failed to load weights')
 
@@ -97,6 +98,7 @@ def run(weights, source):
     print(f'percentage of images with error less equal than 3 pixels: {error_leq3p_count / len(image_names)}')
     print(f'percentage of images with error less equal than 5 pixels: {error_leq5p_count / len(image_names)}')
     print(f'test image with the maximum error: {max_error_image_name}')
+    print(f'\nResults saved to {save_dir}')
 
 
 def parse_opt():

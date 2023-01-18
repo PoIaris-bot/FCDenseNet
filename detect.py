@@ -16,16 +16,18 @@ def run(weights, source):
     if model_format == '.pth':
         model_name = Path(weights).stem
         if model_name in FCDenseNets.keys():
+            print(f'Loading {model_name}...')
             model = FCDenseNets[model_name].eval().cuda()
         else:
             raise SystemExit('Unsupported type of model')
 
         if os.path.exists(weights):
             model.load_state_dict(torch.load(weights))
-            print('Successfully loaded weights')
+            print('Successfully loaded weights\n')
         else:
             raise SystemExit('Failed to load weights')
     elif model_format == '.onnx':
+        print(f'Loading {Path(weights).stem}...')
         ie = IECore()
         net = ie.read_network(model=weights)
         input_blob = next(iter(net.input_info))
