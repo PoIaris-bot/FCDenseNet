@@ -3,8 +3,8 @@ import torch
 import argparse
 from torch import nn, optim
 from torch.utils.data import DataLoader
-from model import FCDenseNets
-from dataset import KeyholeDataset
+from models.network import FCDenseNets
+from utils.dataset import KeyholeDataset
 
 
 def run(model_name, weights, source, batch_size, epochs):
@@ -17,8 +17,15 @@ def run(model_name, weights, source, batch_size, epochs):
     if weights and os.path.exists(weights):
         model.load_state_dict(torch.load(weights))
         print('Successfully loaded weights')
-    if not os.path.exists('weights'):
-        os.makedirs('weights')
+
+    save_dir = 'runs/train/exp'
+    if os.path.exists(save_dir):
+        for n in range(2, 9999):
+            temp_dir = f'{save_dir}{n}'
+            if not os.path.exists(temp_dir):
+                save_dir = temp_dir
+                break
+    os.makedirs(save_dir)
 
     optimizer = optim.Adam(model.parameters())
     loss_func = nn.BCELoss()
@@ -43,9 +50,9 @@ def run(model_name, weights, source, batch_size, epochs):
                 print('\repoch: {:>5d}/{:<5d} batch: {:>5d}/{:<5d} loss: {:^12.8f} average loss: {:^12.8f}'.format(
                     epoch, epochs, batch, len(data_loader) - 1, loss, avg_loss / (batch + 1)
                 ), end='')
-                torch.save(model.state_dict(), f'weights/{model_name}.pth')
+                torch.save(model.state_dict(), f'{save_dir}/{model_name}.pth')
 
-        torch.save(model.state_dict(), f'weights/{model_name}.pth')
+        torch.save(model.state_dict(), f'{save_dir}/{model_name}.pth')
         print('\repoch: {:>5d}/{:<5d} batch: {:>5d}/{:<5d} loss: {:^12.8f} average loss: {:^12.8f}'.format(
             epoch, epochs, len(data_loader) - 1, len(data_loader) - 1, loss, avg_loss / len(data_loader)
         ), end='\n')

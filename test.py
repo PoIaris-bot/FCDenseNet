@@ -6,8 +6,8 @@ import argparse
 import numpy as np
 from math import sqrt
 from pathlib import Path
-from model import FCDenseNets
-from utils import resize, transform
+from models.network import FCDenseNets
+from utils.transform import resize, transform
 
 
 @torch.no_grad()
@@ -28,9 +28,14 @@ def run(weights, source):
     segment_dir = os.path.join(source, 'SegmentationClass')
     image_names = os.listdir(image_dir)
 
-    save_dir = 'run/test'
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
+    save_dir = 'runs/test/exp'
+    if os.path.exists(save_dir):
+        for n in range(2, 9999):
+            temp_dir = f'{save_dir}{n}'
+            if not os.path.exists(temp_dir):
+                save_dir = temp_dir
+                break
+    os.makedirs(save_dir)
 
     avg_error = 0
     max_error = 0

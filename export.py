@@ -2,7 +2,7 @@ import os
 import torch
 import argparse
 from pathlib import Path
-from model import FCDenseNets
+from models.network import FCDenseNets
 
 
 @torch.no_grad()

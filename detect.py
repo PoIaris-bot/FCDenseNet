@@ -6,8 +6,8 @@ import argparse
 import numpy as np
 from pathlib import Path
 from openvino.inference_engine import IECore
-from model import FCDenseNets
-from utils import resize, transform
+from models.network import FCDenseNets
+from utils.transform import resize, transform
 
 
 @torch.no_grad()
