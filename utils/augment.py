@@ -15,7 +15,7 @@ def augmenter(image, segment_image):
     affine = iaa.SomeOf(
         (1, 2), [
             iaa.Affine(scale=(0.5, 1)),
-            iaa.Affine(rotate=(-45, 45)),
+            iaa.Affine(rotate=(-180, 180)),
         ]
     )
 
@@ -25,28 +25,20 @@ def augmenter(image, segment_image):
         iaa.Sharpen(),
     ])
 
-    noise = iaa.SomeOf(
-        (1, 2), [
-            iaa.AdditiveGaussianNoise(),
-            iaa.CoarseDropout(p=(0, 0.2), size_percent=0.2),
-        ]
-    )
+    noise = iaa.AdditiveGaussianNoise()
 
-    colorspace = iaa.OneOf([
-        iaa.WithColorspace(
-            to_colorspace="HSV",
-            from_colorspace="BGR",
-            children=iaa.Multiply((0.5, 1.5), per_channel=0.5)
-        ),
-        iaa.Multiply((0.5, 1.5), per_channel=0.5),
-    ])
+    hsv = iaa.WithColorspace(
+        to_colorspace="HSV",
+        from_colorspace="BGR",
+        children=iaa.Multiply((0.5, 1.5), per_channel=0.5)
+    )
 
     augment = iaa.Sequential([
         flip if np.random.rand() < 0.5 else iaa.Noop(),
         affine if np.random.rand() < 0.5 else iaa.Noop(),
-        blur if np.random.rand() < 0.5 else iaa.Noop(),
-        noise if np.random.rand() < 0.5 else iaa.Noop(),
-        colorspace if np.random.rand() < 0.5 else iaa.Noop()
+        blur if np.random.rand() < 0.3 else iaa.Noop(),
+        noise if np.random.rand() < 0.3 else iaa.Noop(),
+        hsv if np.random.rand() < 0.2 else iaa.Noop()
     ], random_order=True)
 
     image, segment_image = augment(image=image, segmentation_maps=segment_image)
