@@ -36,9 +36,9 @@ def augmenter(image, segment_image):
     augment = iaa.Sequential([
         flip if np.random.rand() < 0.5 else iaa.Noop(),
         affine if np.random.rand() < 0.5 else iaa.Noop(),
-        blur if np.random.rand() < 0.3 else iaa.Noop(),
-        noise if np.random.rand() < 0.3 else iaa.Noop(),
-        hsv if np.random.rand() < 0.2 else iaa.Noop()
+        blur if np.random.rand() < 0.2 else iaa.Noop(),
+        noise if np.random.rand() < 0.2 else iaa.Noop(),
+        hsv if np.random.rand() < 0.1 else iaa.Noop()
     ], random_order=True)
 
     image, segment_image = augment(image=image, segmentation_maps=segment_image)

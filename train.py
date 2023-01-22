@@ -1,16 +1,24 @@
 import os
 import torch
 import argparse
+import numpy as np
+import pytorch_warmup as warmup
 from torch import nn, optim
 from torch.utils.data import DataLoader
 from models.network import FCDenseNets
 from utils.dataset import KeyholeDataset
 
 
-def run(model_name, weights, source, augment, batch_size, num_workers, epochs):
-    data_loader = DataLoader(
-        KeyholeDataset(source, augment), batch_size=batch_size, num_workers=num_workers, shuffle=True
+def run(model_name, weights, train_data, val_data, augment, batch_size, num_workers, epochs):
+    train_data_loader = DataLoader(
+        KeyholeDataset(train_data, augment), batch_size=batch_size, num_workers=num_workers, shuffle=True
     )
+    train_data_count = len(train_data_loader)
+    val_data_loader = DataLoader(
+        KeyholeDataset(val_data, False), batch_size=batch_size, num_workers=num_workers, shuffle=True
+    )
+    val_data_count = len(train_data_loader)
+
     if model_name in FCDenseNets.keys():
         model = FCDenseNets[model_name].cuda()
     else:
@@ -29,35 +37,61 @@ def run(model_name, weights, source, augment, batch_size, num_workers, epochs):
                 break
     os.makedirs(save_dir)
 
-    optimizer = optim.Adam(model.parameters())
+    optimizer = optim.Adam(model.parameters(), lr=0.1)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_data_loader) * epochs)
+    warmup_scheduler = warmup.UntunedLinearWarmup(optimizer)
     loss_func = nn.BCELoss()
 
     epoch = 0
+    min_avg_val_loss = np.inf
     while epoch < epochs:
-        loss = 0
-        avg_loss = 0
-        for batch, (image, segment_image) in enumerate(data_loader):
+        # training
+        model.train()
+        train_loss = 0
+        avg_train_loss = 0
+        for batch, (image, segment_image) in enumerate(train_data_loader):
             image, segment_image = image.cuda(), segment_image.cuda()
 
             output_image = model(image)
-            train_loss = loss_func(output_image, segment_image)
+            loss = loss_func(output_image, segment_image)
 
             optimizer.zero_grad()
-            train_loss.backward()
+            loss.backward()
             optimizer.step()
+            # schedule learning rate
+            with warmup_scheduler.dampening():
+                scheduler.step()
 
-            loss = train_loss.item()
-            avg_loss += loss
+            train_loss = loss.item()
+            avg_train_loss += train_loss
             if batch % 100 == 0:
-                print('\repoch: {:>5d}/{:<5d} batch: {:>5d}/{:<5d} loss: {:^12.8f} average loss: {:^12.8f}'.format(
-                    epoch, epochs - 1, batch, len(data_loader) - 1, loss, avg_loss / (batch + 1)
+                print('\r[train] epoch: {:>5d}/{:<5d} batch: {:>5d}/{:<5d} loss: {:^12.8f} avg_loss: {:^12.8f}'.format(
+                    epoch, epochs - 1, batch, train_data_count - 1, train_loss, avg_train_loss / (batch + 1)
                 ), end='')
-                torch.save(model.state_dict(), f'{save_dir}/{model_name}.pth')
 
-        torch.save(model.state_dict(), f'{save_dir}/{model_name}.pth')
-        print('\repoch: {:>5d}/{:<5d} batch: {:>5d}/{:<5d} loss: {:^12.8f} average loss: {:^12.8f}'.format(
-            epoch, epochs - 1, len(data_loader) - 1, len(data_loader) - 1, loss, avg_loss / len(data_loader)
+        torch.save(model.state_dict(), f'{save_dir}/last.pth')
+        print('\r[train] epoch: {:>5d}/{:<5d} batch: {:>5d}/{:<5d} loss: {:^12.8f} avg_loss: {:^12.8f}'.format(
+            epoch, epochs - 1, train_data_count - 1, train_data_count - 1, train_loss, avg_train_loss / train_data_count
         ), end='\n')
+
+        # validation
+        avg_val_loss = 0
+        model.eval()
+        for image, segment_image in val_data_loader:
+            image, segment_image = image.cuda(), segment_image.cuda()
+            with torch.no_grad():
+                output_image = model(image)
+                loss = loss_func(output_image, segment_image)
+
+            avg_val_loss += loss.item()
+        avg_val_loss /= val_data_count
+        if avg_val_loss < min_avg_val_loss:
+            min_avg_val_loss = avg_val_loss
+            torch.save(model.state_dict(), f'{save_dir}/best.pth')
+        print('[validation] epoch: {:>5d}/{:<5d} avg_loss: {:^12.8f} min_avg_loss: {:^12.8f}'.format(
+            epoch, epochs - 1, avg_val_loss, min_avg_val_loss
+        ), end='\n')
+
         epoch += 1
     print(f'\nResults saved to {save_dir}')
 
@@ -65,7 +99,8 @@ def run(model_name, weights, source, augment, batch_size, num_workers, epochs):
 def parse_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument('-m', '--model-name', help='model name', default='FCDenseNet56')
-    parser.add_argument('-s', '--source', type=str, help='image source', default='datasets/train')
+    parser.add_argument('-t', '--train-data', type=str, help='training datasets', default='datasets/train')
+    parser.add_argument('-v', '--val-data', type=str, help='validation datasets', default='datasets/val')
     parser.add_argument('-w', '--weights', help='weight path', default='')
     parser.add_argument('-b', '--batch-size', type=int, help='batch size', default=4)
     parser.add_argument('-n', '--num-workers', type=int, help='number of workers', default=4)
