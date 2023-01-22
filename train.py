@@ -36,8 +36,7 @@ def run(model_name, weights, train_data, val_data, augment, batch_size, num_work
                 break
     os.makedirs(save_dir)
 
-    optimizer = optim.Adam(model.parameters(), lr=0.1)
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_data_loader) * epochs)
+    optimizer = optim.Adam(model.parameters())
     loss_func = nn.BCELoss()
 
     epoch = 0
@@ -56,7 +55,6 @@ def run(model_name, weights, train_data, val_data, augment, batch_size, num_work
             optimizer.zero_grad()
             train_loss.backward()
             optimizer.step()
-            scheduler.step()
 
             loss = train_loss.item()
             avg_train_loss += loss
