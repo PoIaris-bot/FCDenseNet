@@ -2,7 +2,6 @@ import os
 import torch
 import argparse
 import numpy as np
-import pytorch_warmup as warmup
 from torch import nn, optim
 from torch.utils.data import DataLoader
 from models.network import FCDenseNets
@@ -17,7 +16,7 @@ def run(model_name, weights, train_data, val_data, augment, batch_size, num_work
     val_data_loader = DataLoader(
         KeyholeDataset(val_data, False), batch_size=batch_size, num_workers=num_workers, shuffle=True
     )
-    val_data_count = len(train_data_loader)
+    val_data_count = len(val_data_loader)
 
     if model_name in FCDenseNets.keys():
         model = FCDenseNets[model_name].cuda()
@@ -39,51 +38,49 @@ def run(model_name, weights, train_data, val_data, augment, batch_size, num_work
 
     optimizer = optim.Adam(model.parameters(), lr=0.1)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_data_loader) * epochs)
-    warmup_scheduler = warmup.UntunedLinearWarmup(optimizer)
     loss_func = nn.BCELoss()
 
     epoch = 0
     min_avg_val_loss = np.inf
     while epoch < epochs:
         # training
-        model.train()
-        train_loss = 0
+        loss = 0
         avg_train_loss = 0
+        model.train()
         for batch, (image, segment_image) in enumerate(train_data_loader):
             image, segment_image = image.cuda(), segment_image.cuda()
 
             output_image = model(image)
-            loss = loss_func(output_image, segment_image)
+            train_loss = loss_func(output_image, segment_image)
 
             optimizer.zero_grad()
-            loss.backward()
+            train_loss.backward()
             optimizer.step()
-            # schedule learning rate
-            with warmup_scheduler.dampening():
-                scheduler.step()
+            scheduler.step()
 
-            train_loss = loss.item()
-            avg_train_loss += train_loss
+            loss = train_loss.item()
+            avg_train_loss += loss
             if batch % 100 == 0:
                 print('\r[train] epoch: {:>5d}/{:<5d} batch: {:>5d}/{:<5d} loss: {:^12.8f} avg_loss: {:^12.8f}'.format(
-                    epoch, epochs - 1, batch, train_data_count - 1, train_loss, avg_train_loss / (batch + 1)
+                    epoch, epochs - 1, batch, train_data_count - 1, loss, avg_train_loss / (batch + 1)
                 ), end='')
 
         torch.save(model.state_dict(), f'{save_dir}/last.pth')
         print('\r[train] epoch: {:>5d}/{:<5d} batch: {:>5d}/{:<5d} loss: {:^12.8f} avg_loss: {:^12.8f}'.format(
-            epoch, epochs - 1, train_data_count - 1, train_data_count - 1, train_loss, avg_train_loss / train_data_count
+            epoch, epochs - 1, train_data_count - 1, train_data_count - 1, loss, avg_train_loss / train_data_count
         ), end='\n')
 
         # validation
         avg_val_loss = 0
         model.eval()
-        for image, segment_image in val_data_loader:
-            image, segment_image = image.cuda(), segment_image.cuda()
-            with torch.no_grad():
-                output_image = model(image)
-                loss = loss_func(output_image, segment_image)
+        with torch.no_grad():
+            for image, segment_image in val_data_loader:
+                image, segment_image = image.cuda(), segment_image.cuda()
 
-            avg_val_loss += loss.item()
+                output_image = model(image)
+                val_loss = loss_func(output_image, segment_image)
+
+                avg_val_loss += val_loss.item()
         avg_val_loss /= val_data_count
         if avg_val_loss < min_avg_val_loss:
             min_avg_val_loss = avg_val_loss

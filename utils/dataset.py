@@ -1,17 +1,6 @@
 import os
 import cv2
-import sys
-import platform
-from pathlib import Path
 from torch.utils.data import Dataset
-
-FILE = Path(__file__).resolve()
-ROOT = FILE.parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.append(str(ROOT))  # add ROOT to PATH
-if platform.system() != 'Windows':
-    ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
-
 from utils.augment import augmenter
 from utils.transform import resize, transform
 

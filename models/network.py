@@ -1,17 +1,5 @@
-import os
-import sys
-import platform
 from torch import nn
-from pathlib import Path
-
-FILE = Path(__file__).resolve()
-ROOT = FILE.parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.append(str(ROOT))  # add ROOT to PATH
-if platform.system() != 'Windows':
-    ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
-
-from models.block import DenseBlock, TransitionDown, TransitionUp
+from models.module import DenseBlock, TransitionDown, TransitionUp
 
 
 class FCDenseNet(nn.Module):
