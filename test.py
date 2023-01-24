@@ -11,8 +11,7 @@ from utils.general import increment_path, localization
 from utils.transform import test_transform
 
 
-@torch.no_grad()
-def run(weights, test_dataset, device):
+def create_model(weights, device):
     model_name = Path(weights).stem
     if model_name in FCDenseNets.keys():
         print(f'Loading {model_name}...')
@@ -25,13 +24,13 @@ def run(weights, test_dataset, device):
         print('Successfully loaded weights\n')
     else:
         raise SystemExit('Failed to load weights')
+    return model
 
+
+def test(model, test_dataset, device, save_dir):
     image_directory = os.path.join(test_dataset, 'JPEGImages')
     mask_directory = os.path.join(test_dataset, 'SegmentationClass')
     image_filenames = os.listdir(image_directory)
-
-    save_dir = increment_path('runs/test/exp')
-    os.makedirs(save_dir)
 
     avg_error = 0
     max_error = 0
@@ -45,8 +44,10 @@ def run(weights, test_dataset, device):
     for image_filename in image_filenames:
         image_path = os.path.join(image_directory, image_filename)
         mask_path = os.path.join(mask_directory, image_filename)
+
         image = cv2.imread(image_path)
         original_mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+
         transformed = test_transform(image=image)
         input_image = torch.unsqueeze(transformed['image'], dim=0).to(device)
         start = time.time()
@@ -61,6 +62,7 @@ def run(weights, test_dataset, device):
         resize = A.Resize(image.shape[0], image.shape[1])
         resized = resize(image=image, mask=predicted_mask)
         predicted_mask = resized['mask']
+
         (x, y), predicted_contours = localization(predicted_mask)
         (x0, y0), original_contours = localization(original_mask)
 
@@ -87,6 +89,15 @@ def run(weights, test_dataset, device):
     print(f'percentage of images with error less equal than 5 pixels: {error_leq5p_count / len(image_filenames)}')
     print(f'test image with the maximum error: {max_error_image_name}')
     print(f'\nResults saved to {save_dir}')
+
+
+@torch.no_grad()
+def run(weights, test_dataset, device):
+    save_dir = increment_path('runs/test/exp')
+    os.makedirs(save_dir)
+
+    model = create_model(weights, device)
+    test(model, test_dataset, device, save_dir)
 
 
 def parse_opt():

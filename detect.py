@@ -10,12 +10,11 @@ from utils.transform import test_transform
 from utils.general import localization
 
 
-@torch.no_grad()
-def run(weights, source):
+def create_model(weights, device):
     model_name = Path(weights).stem
     if model_name in FCDenseNets.keys():
         print(f'Loading {model_name}...')
-        model = FCDenseNets[model_name].eval().cuda()
+        model = FCDenseNets[model_name].eval().to(device)
     else:
         raise SystemExit('Unsupported type of model')
 
@@ -24,10 +23,13 @@ def run(weights, source):
         print('Successfully loaded weights\n')
     else:
         raise SystemExit('Failed to load weights')
+    return model
 
+
+def detect(model, source, device):
     image = cv2.imread(source)
     transformed = test_transform(image=image)
-    input_image = torch.unsqueeze(transformed['image'], dim=0).cuda()
+    input_image = torch.unsqueeze(transformed['image'], dim=0).to(device)
     time_stamp = time.time()
     predicted_mask = model(input_image).squeeze()
     print('Inference took %.4fs to complete' % (time.time() - time_stamp))
@@ -46,10 +48,17 @@ def run(weights, source):
     cv2.destroyAllWindows()
 
 
+@torch.no_grad()
+def run(weights, source, device):
+    model = create_model(weights, device)
+    detect(model, source, device)
+
+
 def parse_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument('-w', '--weights', type=str, help='model path', default='weights/FCDenseNet56.pth')
     parser.add_argument('-s', '--source', type=str, help='image source', default='datasets/test/JPEGImages/00001.jpg')
+    parser.add_argument('-d', '--device', type=str, help='device', default='cuda')
     opt = parser.parse_args()
     return opt
 

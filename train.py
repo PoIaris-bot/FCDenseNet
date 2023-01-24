@@ -12,7 +12,7 @@ from utils.transform import train_transform, val_transform
 
 
 def train(train_loader, model, criterion, optimizer, epoch, epochs, device):
-    metric_monitor = MetricMonitor()
+    metric_monitor = MetricMonitor(float_precision=5)
     model.train()
     stream = tqdm(train_loader)
     for i, (images, target) in enumerate(stream, start=1):
@@ -32,7 +32,7 @@ def train(train_loader, model, criterion, optimizer, epoch, epochs, device):
 
 
 def validate(val_loader, model, criterion, epoch, epochs, device):
-    metric_monitor = MetricMonitor()
+    metric_monitor = MetricMonitor(float_precision=5)
     model.eval()
     stream = tqdm(val_loader)
     with torch.no_grad():
