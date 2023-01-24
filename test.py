@@ -3,19 +3,20 @@ import cv2
 import time
 import torch
 import argparse
-import numpy as np
+import albumentations as A
 from math import sqrt
 from pathlib import Path
 from models.network import FCDenseNets
-from utils.transform import resize, transform
+from utils.general import increment_path, localization
+from utils.transform import test_transform
 
 
 @torch.no_grad()
-def run(weights, source):
+def run(weights, test_dataset, device):
     model_name = Path(weights).stem
     if model_name in FCDenseNets.keys():
         print(f'Loading {model_name}...')
-        model = FCDenseNets[model_name].eval().cuda()
+        model = FCDenseNets[model_name].eval().to(device)
     else:
         raise SystemExit('Unsupported type of model')
 
@@ -25,17 +26,11 @@ def run(weights, source):
     else:
         raise SystemExit('Failed to load weights')
 
-    image_dir = os.path.join(source, 'JPEGImages')
-    segment_dir = os.path.join(source, 'SegmentationClass')
-    image_names = os.listdir(image_dir)
+    image_directory = os.path.join(test_dataset, 'JPEGImages')
+    mask_directory = os.path.join(test_dataset, 'SegmentationClass')
+    image_filenames = os.listdir(image_directory)
 
-    save_dir = 'runs/test/exp'
-    if os.path.exists(save_dir):
-        for n in range(2, 9999):
-            temp_dir = f'{save_dir}{n}'
-            if not os.path.exists(temp_dir):
-                save_dir = temp_dir
-                break
+    save_dir = increment_path('runs/test/exp')
     os.makedirs(save_dir)
 
     avg_error = 0
@@ -47,41 +42,34 @@ def run(weights, source):
     error_leq5p_count = 0
 
     avg_infer_time = 0
-    for image_name in image_names:
-        image_path = os.path.join(image_dir, image_name)
-        segment_image_path = os.path.join(segment_dir, image_name)
-        image = resize(cv2.imread(image_path))
-        segment_image = resize(cv2.imread(segment_image_path, 0))
-
-        input_image = torch.unsqueeze(transform(image), dim=0).cuda()
+    for image_filename in image_filenames:
+        image_path = os.path.join(image_directory, image_filename)
+        mask_path = os.path.join(mask_directory, image_filename)
+        image = cv2.imread(image_path)
+        original_mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+        transformed = test_transform(image=image)
+        input_image = torch.unsqueeze(transformed['image'], dim=0).to(device)
         start = time.time()
-        output_image = model(input_image)
+        predicted_mask = model(input_image).squeeze()
         end = time.time()
         avg_infer_time += end - start
-        output_image = output_image.cpu().detach().numpy().reshape(output_image.shape[-2:]) * 255
+        predicted_mask = predicted_mask.cpu().numpy() * 255
 
-        _, output_binary = cv2.threshold(output_image.astype('uint8'), 5, 255, cv2.THRESH_BINARY)
-        _, binary = cv2.threshold(segment_image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        _, predicted_mask = cv2.threshold(predicted_mask.astype('uint8'), 5, 255, cv2.THRESH_BINARY)
+        _, original_mask = cv2.threshold(original_mask, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-        output_contours, _ = cv2.findContours(output_binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        contours, _ = cv2.findContours(binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        resize = A.Resize(image.shape[0], image.shape[1])
+        resized = resize(image=image, mask=predicted_mask)
+        predicted_mask = resized['mask']
+        (x, y), predicted_contours = localization(predicted_mask)
+        (x0, y0), original_contours = localization(original_mask)
 
-        output_area = []
-        for i in range(len(output_contours)):
-            output_area.append(cv2.contourArea(output_contours[i]))
-        output_max_idx = np.argmax(output_area)
-        for i in range(len(output_contours)):
-            if i != output_max_idx:
-                cv2.fillPoly(output_binary, [output_contours[i]], 0)
+        cv2.drawContours(image, predicted_contours, -1, (0, 0, 255), 3)
+        cv2.drawContours(image, original_contours, -1, (0, 255, 0), 3)
 
-        cv2.drawContours(image, output_contours, output_max_idx, (0, 255, 0), 3)
-        cv2.drawContours(image, contours, -1, (0, 0, 255), 3)
-
-        y, x = map(int, np.mean(np.where(output_binary > 0), axis=1))
-        y0, x0 = map(int, np.mean(np.where(binary > 0), axis=1))
         cv2.circle(image, (x, y), 3, (0, 255, 0), 2)
         cv2.circle(image, (x0, y0), 3, (0, 0, 255), 2)
-        cv2.imwrite(f'{save_dir}/{image_name}', image)
+        cv2.imwrite(f'{save_dir}/{image_filename}', image)
 
         error = sqrt((x - x0) ** 2 + (y - y0) ** 2)
 
@@ -90,13 +78,13 @@ def run(weights, source):
         error_leq5p_count += 1 if error <= 5 else 0
 
         avg_error += error
-        max_error_image_name = image_name if error > max_error else max_error_image_name
+        max_error_image_name = image_filename if error > max_error else max_error_image_name
         max_error = error if error > max_error else max_error
-    print(f'average error: {avg_error / len(image_names)} maximum error: {max_error}')
-    print(f'average inference time: {avg_infer_time / len(image_names)} s')
-    print(f'percentage of images with error less equal than 1 pixel: {error_leq1p_count / len(image_names)}')
-    print(f'percentage of images with error less equal than 3 pixels: {error_leq3p_count / len(image_names)}')
-    print(f'percentage of images with error less equal than 5 pixels: {error_leq5p_count / len(image_names)}')
+    print(f'average error: {avg_error / len(image_filenames)} maximum error: {max_error}')
+    print(f'average inference time: {avg_infer_time / len(image_filenames)} s')
+    print(f'percentage of images with error less equal than 1 pixel: {error_leq1p_count / len(image_filenames)}')
+    print(f'percentage of images with error less equal than 3 pixels: {error_leq3p_count / len(image_filenames)}')
+    print(f'percentage of images with error less equal than 5 pixels: {error_leq5p_count / len(image_filenames)}')
     print(f'test image with the maximum error: {max_error_image_name}')
     print(f'\nResults saved to {save_dir}')
 
@@ -104,7 +92,8 @@ def run(weights, source):
 def parse_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument('-w', '--weights', type=str, help='model path', default='weights/FCDenseNet56.pth')
-    parser.add_argument('-s', '--source', type=str, help='image source', default='datasets/test')
+    parser.add_argument('-t', '--test-dataset', type=str, help='test datasets', default='datasets/test')
+    parser.add_argument('-d', '--device', type=str, help='device', default='cuda')
     opt = parser.parse_args()
     return opt
 

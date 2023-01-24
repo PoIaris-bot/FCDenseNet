@@ -3,66 +3,42 @@ import cv2
 import time
 import torch
 import argparse
-import numpy as np
+import albumentations as A
 from pathlib import Path
-from openvino.inference_engine import IECore
 from models.network import FCDenseNets
-from utils.transform import resize, transform
+from utils.transform import test_transform
+from utils.general import localization
 
 
 @torch.no_grad()
 def run(weights, source):
-    model_format = Path(weights).suffix
-    if model_format == '.pth':
-        model_name = Path(weights).stem
-        if model_name in FCDenseNets.keys():
-            print(f'Loading {model_name}...')
-            model = FCDenseNets[model_name].eval().cuda()
-        else:
-            raise SystemExit('Unsupported type of model')
-
-        if os.path.exists(weights):
-            model.load_state_dict(torch.load(weights))
-            print('Successfully loaded weights\n')
-        else:
-            raise SystemExit('Failed to load weights')
-    elif model_format == '.onnx':
-        print(f'Loading {Path(weights).stem}...')
-        ie = IECore()
-        net = ie.read_network(model=weights)
-        input_blob = next(iter(net.input_info))
-        output_blob = next(iter(net.outputs))
-        model = ie.load_network(network=net, device_name='CPU')
+    model_name = Path(weights).stem
+    if model_name in FCDenseNets.keys():
+        print(f'Loading {model_name}...')
+        model = FCDenseNets[model_name].eval().cuda()
     else:
-        raise SystemExit('Unsupported type of model format')
+        raise SystemExit('Unsupported type of model')
 
-    image = resize(cv2.imread(source))
-    if model_format == '.pth':
-        input_image = torch.unsqueeze(transform(image), dim=0).cuda()
-        time_stamp = time.time()
-        output_image = model(input_image)
-        print('Inference took %.4fs to complete' % (time.time() - time_stamp))
-        output_image = output_image.cpu().detach().numpy()
+    if os.path.exists(weights):
+        model.load_state_dict(torch.load(weights))
+        print('Successfully loaded weights\n')
     else:
-        input_image = image.transpose(2, 0, 1) / 255
-        time_stamp = time.time()
-        output = model.infer(inputs={input_blob: [input_image]})
-        print('Inference took %.4fs to complete' % (time.time() - time_stamp))
-        output_image = output[output_blob]
+        raise SystemExit('Failed to load weights')
 
-    output_image = output_image.reshape(output_image.shape[-2:]) * 255
-    _, binary = cv2.threshold(output_image.astype('uint8'), 0, 255, cv2.THRESH_BINARY)
-    contours, _ = cv2.findContours(binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    area = []
-    for i in range(len(contours)):
-        area.append(cv2.contourArea(contours[i]))
-    max_idx = np.argmax(area)
-    for i in range(len(contours)):
-        if i != max_idx:
-            cv2.fillPoly(binary, [contours[i]], 0)
-    cv2.drawContours(image, contours, max_idx, (0, 255, 0), 3)
+    image = cv2.imread(source)
+    transformed = test_transform(image=image)
+    input_image = torch.unsqueeze(transformed['image'], dim=0).cuda()
+    time_stamp = time.time()
+    predicted_mask = model(input_image).squeeze()
+    print('Inference took %.4fs to complete' % (time.time() - time_stamp))
+    predicted_mask = predicted_mask.cpu().numpy() * 255
 
-    y, x = map(int, np.mean(np.where(binary > 0), axis=1))
+    _, predicted_mask = cv2.threshold(predicted_mask.astype('uint8'), 0, 255, cv2.THRESH_BINARY)
+    resize = A.Resize(image.shape[0], image.shape[1])
+    resized = resize(image=image, mask=predicted_mask)
+    predicted_mask = resized['mask']
+    (x, y), predicted_contours = localization(predicted_mask)
+    cv2.drawContours(image, predicted_contours, -1, (0, 0, 255), 3)
     cv2.circle(image, (x, y), 3, (0, 255, 0), 2)
 
     cv2.imshow('result', image)
